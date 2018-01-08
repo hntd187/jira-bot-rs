@@ -1,0 +1,4 @@
+session_id: asdf
+jira_base: http://www.google.com
+xsrf_token: asdf
+slack_key:
