@@ -1,0 +1,19 @@
+[package]
+name = "jira-slack-bot"
+version = "0.1.0"
+authors = ["Stephen Carman <shcarman@gmail.com>"]
+
+[[bin]]
+name = "jira-bot"
+path = "src/main.rs"
+
+[[bin]]
+name = "jira-requests"
+path = "src/jira/main.rs"
+
+[dependencies]
+json = "*"
+reqwest = "0.8.2"
+config =  "0.6"
+slack = "0.19.0"
+slack_api = "0.19.0"
