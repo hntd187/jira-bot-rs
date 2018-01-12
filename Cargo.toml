@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "jira-requests"
-path = "src/jira/main.rs"
+path = "src/mods/main.rs"
 
 [dependencies]
 json = "*"

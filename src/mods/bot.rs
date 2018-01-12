@@ -7,8 +7,9 @@ use slack::{EventHandler, RtmClient, Event, Message};
 use slack::api::auth::test;
 use slack::api::requests::Client;
 use slack::api::default_client;
-use reqwest::Url;
 use reqwest::Error;
+
+use mods::jira;
 
 pub struct SlackHandler<'a> {
   token: &'a String,
@@ -23,7 +24,7 @@ impl<'a> SlackHandler<'a> {
       token,
       base,
       client: default_client().unwrap(),
-      my_id: String::from(""),
+      my_id: String::new(),
     }
   }
 
@@ -33,26 +34,13 @@ impl<'a> SlackHandler<'a> {
       let (cmd, rapid_id, sprint_id) = (&tokens[0], &tokens[1], &tokens[2]);
       match cmd.as_ref() {
         "report" => {
-          let r = self.sprint_report(rapid_id, sprint_id)?;
-          println!("Report: {}", r);
+          let r = jira::sprint_report(reqwest::Client::new(), self.base, rapid_id, sprint_id);
+          println!("Report: {:?}", r);
         }
         _ => {}
       };
     }
     Ok(())
-  }
-
-  fn sprint_report(&self, rapid_id: &String, sprint_id: &String) -> Result<&str, Error> {
-    let params = [("rapidId", rapid_id), ("sprintId", sprint_id)];
-
-    let base_url = match Url::parse_with_params(self.base.as_str(), &params) {
-      Ok(u) => u,
-      Err(e) => panic!("Error parsing url: {:?} with {:?}, Reason: {:?}", self.base, params.to_vec(), e),
-    };
-    let joined_url = base_url.join("charts/sprintreport").unwrap();
-    let resp = self.client.get(joined_url.as_str());
-
-    return Ok("Body!");
   }
 }
 
