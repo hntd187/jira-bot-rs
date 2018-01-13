@@ -1,16 +1,12 @@
-#![feature(box_patterns, try_trait)]
 extern crate slack;
 extern crate config;
-extern crate reqwest;
-
-mod mods;
-
-use mods::bot;
+extern crate botlib;
 
 use slack::RtmClient;
-
 use config::{Config, File};
 use std::process::exit;
+
+use botlib::bot;
 
 fn get_key(cfg: &Config, key: &str) -> String {
   match cfg.get_str(key) {
@@ -27,9 +23,8 @@ fn main() {
   cfg.merge(File::with_name("conf/config.yml"));
 
   let token = get_key(&cfg, "slack_key");
-  let base_url = get_key(&cfg, "jira_base");
 
-  let mut handler = bot::SlackHandler::new(&token, &base_url);
+  let mut handler = bot::SlackHandler::new(&token);
   match RtmClient::login_and_run(&token, &mut handler) {
     Ok(_) => (),
     Err(err) => panic!("Error: {}", err)
