@@ -9,8 +9,6 @@ use json::{JsonValue, parse};
 pub type Params = Vec<(String, String)>;
 pub type Cookies = Vec<(String, String)>;
 
-use std::error::Error;
-
 lazy_static! {
   static ref CLIENT: Client = {
     Client::new()
