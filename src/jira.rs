@@ -1,5 +1,6 @@
+extern crate json;
+
 use std::fmt;
-use std::fmt::Write;
 use std::error::Error;
 
 use chrono::*;
@@ -25,13 +26,15 @@ pub struct ReportError(ReportErrorReason);
 enum ReportErrorReason {
   BadDate,
   BadRequest,
+  ReportParsingError,
 }
 
 impl Error for ReportError {
   fn description(&self) -> &str {
     match self.0 {
       ReportErrorReason::BadDate => "Was not able to parse a date in the sprint report",
-      ReportErrorReason::BadRequest => "The REST called to jira failed"
+      ReportErrorReason::BadRequest => "The REST called to jira failed",
+      ReportErrorReason::ReportParsingError => "Error parsing returned JSON"
     }
   }
 }
@@ -58,12 +61,45 @@ fn ordinal(date: NaiveDateTime) -> Result<String, ReportError> {
   Ok(result)
 }
 
-fn get_issues(sprint: &JsonValue) -> Result<(Duration, Duration, Duration), ReportError> {
-  let completed = sprint["completedIssuesEstimateSum"]["value"].as_i64().map(Duration::seconds);
-  let incomplete = sprint["incompletedIssuesEstimateSum"]["value"].as_i64().map(Duration::seconds);
-  let total = sprint["allIssuesEstimateSum"]["value"].as_i64().map(Duration::seconds);
+fn pretty_date(date: NaiveDateTime) -> String {
+  let mut result = String::new();
+  let day = check!(ordinal(date));
+  result.push_str(&format!("{} {}, {}", date.format("%A, %B"), day, date.format("%Y")));
+  result
+}
 
-  Ok((completed.unwrap(), incomplete.unwrap(), total.unwrap()))
+fn get_issues(sprint: &JsonValue) -> Result<(Duration, Duration, Duration), ReportError> {
+  let completed = sprint["completedIssuesEstimateSum"]["value"].as_fixed_point_i64(0).map(Duration::seconds);
+  let incomplete = sprint["incompletedIssuesEstimateSum"]["value"].as_fixed_point_i64(0).map(Duration::seconds);
+  let total = sprint["allIssuesEstimateSum"]["value"].as_fixed_point_i64(0).map(Duration::seconds);
+
+  match (completed, incomplete, total) {
+    (Some(c), Some(i), Some(t)) => Ok((c, i, t)),
+    _ => Err(ReportError(ReportErrorReason::ReportParsingError))
+  }
+}
+
+fn issue_by_user<'a>(d: &'a JsonValue, u: &'a str) -> Vec<&'a JsonValue> {
+  let mut entries: Vec<&'a JsonValue> = Vec::new();
+  for j in d.members() {
+    if j["assignee"] == u {
+      entries.push(&j);
+    }
+  }
+  entries
+}
+
+fn sum_of_issues<'a>(d: Vec<&JsonValue>, key: &'a str) -> i64 {
+  let mut total = 0;
+  for i in d.iter() {
+    if i[key]["statFieldValue"].has_key("value") {
+      match i[key]["statFieldValue"]["value"].as_fixed_point_i64(0) {
+        Some(v) => total += v,
+        None => continue
+      }
+    }
+  }
+  Duration::seconds(total).num_hours()
 }
 
 fn get_start_end_dates(sprint: &JsonValue) -> Result<(NaiveDateTime, NaiveDateTime), ReportError> {
@@ -103,14 +139,36 @@ pub fn sprint_report(rapid_id: &str, sprint_id: &str) -> Result<String, ReportEr
 #[allow(unused_must_use)]
 pub fn build_report(report: JsonValue) -> String {
   let mut result = String::new();
+  let users = vec!["stephen.carman"];
 
   let (start, end) = check!(get_start_end_dates( & report["sprint"]));
-  let time_to_end: Duration = end.signed_duration_since(start);
+  let time_to_end = end.signed_duration_since(start);
   let (compl, incompl, total) = get_issues(&report["contents"]).unwrap();
+  let comp_hours = (compl.num_hours() as f64 / total.num_hours() as f64) * 100.0;
+  let incomp_hours = (incompl.num_hours() as f64 / total.num_hours() as f64) * 100.0;
+  let completed_issues = &report["contents"]["completedIssues"];
+  let incompleted_issues = &report["contents"]["incompletedIssues"];
+
 
   result.push_str("Report for Sprint: ");
-  result.push_str(format!("{}\n", &report["sprint"]["name"]));
-  result.push_str(format!("Sprint Ends in: {} day(s) on {}\n", time_to_end.num_days(), end));
+  result.push_str(&format!("{}\n", &report["sprint"]["name"]));
+  result.push_str(&format!("Sprint Ends in: {} day(s) on {}\n", time_to_end.num_days(), &pretty_date(end)));
+  result.push_str(&format!("Completed: {}h ({:.1}%), {} Issues\n", compl.num_hours(), comp_hours, completed_issues.len()));
+  result.push_str(&format!("Incomplete: {}h ({:.1}%), {} Issues\n\n", incompl.num_hours(), incomp_hours, incompleted_issues.len()));
+
+  result.push_str("Sprint Sizing:\n");
+  for u in users {
+    let issues = issue_by_user(completed_issues, u);
+    let incomplete_issues = issue_by_user(incompleted_issues, u);
+    let num_issues = issues.len() + incomplete_issues.len();
+    if num_issues > 0 {
+      let total_comp = sum_of_issues(issues, "estimateStatistic");
+      let total_incomp = sum_of_issues(incomplete_issues, "estimateStatistic");
+      let total_hours = (total_comp + total_incomp) as f64;
+      let total_pct = (total_comp as f64 / total_hours) * 100.0;
+      result.push_str(&format!("{} has {} hours left on {} ({:.1}%) hours for {} issues\n", u, total_incomp, total_hours, total_pct, num_issues));
+    }
+  }
 
   result
 }
@@ -123,7 +181,6 @@ mod tests {
   use std::io::Read;
 
   use json;
-  use chrono::*;
 
   fn load_data() -> json::JsonValue {
     let mut buf = String::new();
