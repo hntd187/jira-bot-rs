@@ -30,7 +30,6 @@ pub fn http_request(url: &str, params: Params, cookies: Cookies) -> JsonValue {
   check!(body)
 }
 
-
 fn read_body(response: &mut Response) -> Result<String, IOError> {
   let mut txt = String::new();
   response.read_to_string(&mut txt)?;

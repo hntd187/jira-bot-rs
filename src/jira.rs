@@ -1,7 +1,9 @@
 extern crate json;
 
 use std::fmt;
+use std::io::Read;
 use std::error::Error;
+use std::fs::File as StdFile;
 
 use chrono::*;
 use config::*;
@@ -16,6 +18,17 @@ lazy_static! {
     let mut c = Config::default();
     c.merge(File::with_name("conf/config.yml"));
     c
+  };
+  static ref USERS: Vec<String> = {
+      let mut data = String::new();
+      let mut file = StdFile::open("conf/users.json").unwrap();
+      file.read_to_string(&mut data).expect("Failed to read users.json...");
+      json::parse(&data)
+        .expect("Failed to parse users.json file")["users"]
+        .take()
+        .members()
+        .map(|s| s.to_string())
+        .collect()
   };
 }
 
@@ -89,13 +102,27 @@ fn issue_by_user<'a>(d: &'a JsonValue, u: &'a str) -> Vec<&'a JsonValue> {
   entries
 }
 
+fn issue_breakdown(name: &str, issues: &JsonValue) -> String {
+  let mut result = String::new();
+  let base_url = CFG.get_str("jira_base").expect("No JIRA Base URL in Config");
+  result += &format!("{} ({})\n", name, issues.len());
+  if issues.len() >= 1 {
+    for i in issues.members() {
+      result += &format!("`{}` ({}) - {}browse/{}\n", i["key"], i["assigneeName"], base_url, i["key"])
+    }
+  } else {
+    result += &format!("Nothing in {} :(\n", name);
+  }
+  result
+}
+
 fn sum_of_issues<'a>(d: Vec<&JsonValue>, key: &'a str) -> i64 {
   let mut total = 0;
   for i in d.iter() {
     if i[key]["statFieldValue"].has_key("value") {
       match i[key]["statFieldValue"]["value"].as_fixed_point_i64(0) {
         Some(v) => total += v,
-        None => continue
+        None => {}
       }
     }
   }
@@ -117,31 +144,25 @@ fn jira_request(rapid_id: &str, sprint_id: &str) -> JsonValue {
   let session_id = CFG.get_str("session_id").unwrap();
   let base_url = CFG.get_str("jira_base").unwrap();
   let jira_url = format!("{}charts/sprintreport", base_url);
-  let params = vec![("rapidViewId".to_string(), rapid_id.to_string()),
-                    ("sprintId".to_string(), sprint_id.to_string())];
-  let cookies = vec![("JSESSIONID".to_string(), session_id)];
+  let params = vec![
+    (String::from("rapidViewId"), rapid_id.to_owned()),
+    (String::from("sprintId"), sprint_id.to_owned())
+  ];
+  let cookies = vec![(String::from("JSESSIONID"), session_id.to_owned())];
 
   http::http_request(&jira_url, params, cookies)
 }
 
 pub fn sprint_report(rapid_id: &str, sprint_id: &str) -> Result<String, ReportError> {
   let report = jira_request(rapid_id, sprint_id);
-  let mut result = String::new();
-
-  let (start, end) = check!(get_start_end_dates( & report["sprint"]));
-  let time_to_end = end.signed_duration_since(start);
-
-  result += &format!("Report for Sprint: {}\n", report["sprint"]["name"]);
-  result += &format!("Sprint Ends in: {} on {}\n", time_to_end, end);
-  Ok(result)
+  Ok(build_report(report))
 }
 
 #[allow(unused_must_use)]
 pub fn build_report(report: JsonValue) -> String {
   let mut result = String::new();
-  let users = vec!["stephen.carman"];
 
-  let (start, end) = check!(get_start_end_dates( & report["sprint"]));
+  let (start, end) = check!(get_start_end_dates(&report["sprint"]));
   let time_to_end = end.signed_duration_since(start);
   let (compl, incompl, total) = get_issues(&report["contents"]).unwrap();
   let comp_hours = (compl.num_hours() as f64 / total.num_hours() as f64) * 100.0;
@@ -149,26 +170,29 @@ pub fn build_report(report: JsonValue) -> String {
   let completed_issues = &report["contents"]["completedIssues"];
   let incompleted_issues = &report["contents"]["incompletedIssues"];
 
+  result += "Report for Sprint: ";
+  result += &format!("{}\n", &report["sprint"]["name"]);
+  result += &format!("Sprint Ends in: {} day(s) on {}\n", time_to_end.num_days(), &pretty_date(end));
+  result += &format!("Completed: {}h ({:.1}%), {} Issues\n", compl.num_hours(), comp_hours, completed_issues.len());
+  result += &format!("Incomplete: {}h ({:.1}%), {} Issues\n\n", incompl.num_hours(), incomp_hours, incompleted_issues.len());
 
-  result.push_str("Report for Sprint: ");
-  result.push_str(&format!("{}\n", &report["sprint"]["name"]));
-  result.push_str(&format!("Sprint Ends in: {} day(s) on {}\n", time_to_end.num_days(), &pretty_date(end)));
-  result.push_str(&format!("Completed: {}h ({:.1}%), {} Issues\n", compl.num_hours(), comp_hours, completed_issues.len()));
-  result.push_str(&format!("Incomplete: {}h ({:.1}%), {} Issues\n\n", incompl.num_hours(), incomp_hours, incompleted_issues.len()));
-
-  result.push_str("Sprint Sizing:\n");
-  for u in users {
-    let issues = issue_by_user(completed_issues, u);
-    let incomplete_issues = issue_by_user(incompleted_issues, u);
+  result += "Sprint Sizing:\n";
+  for u in USERS.iter() {
+    let issues = issue_by_user(completed_issues, &u);
+    let incomplete_issues = issue_by_user(incompleted_issues, &u);
     let num_issues = issues.len() + incomplete_issues.len();
     if num_issues > 0 {
       let total_comp = sum_of_issues(issues, "estimateStatistic");
       let total_incomp = sum_of_issues(incomplete_issues, "estimateStatistic");
       let total_hours = (total_comp + total_incomp) as f64;
       let total_pct = (total_comp as f64 / total_hours) * 100.0;
-      result.push_str(&format!("{} has {} hours left on {} ({:.1}%) hours for {} issues\n", u, total_incomp, total_hours, total_pct, num_issues));
+      result += &format!("{} has {} hours left on {} ({:.1}%) hours for {} issues\n", u, total_incomp, total_hours, total_pct, num_issues);
     }
   }
+  result += "\n";
+  result += &issue_breakdown("Completed", completed_issues);
+  result += "\n";
+  result += &issue_breakdown("Incomplete", incompleted_issues);
 
   result
 }
