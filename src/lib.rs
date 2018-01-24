@@ -1,12 +1,15 @@
 #![feature(box_patterns, try_trait)]
-extern crate slack;
-extern crate config;
-extern crate reqwest;
-extern crate json;
 extern crate chrono;
-
+extern crate config;
+extern crate fern;
+extern crate json;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
+extern crate reqwest;
+extern crate slack;
+extern crate yaml_rust;
 
 #[macro_export]
 macro_rules! check {
@@ -27,4 +30,3 @@ macro_rules! check_opt {
 pub mod bot;
 pub mod jira;
 mod http;
-

@@ -1,0 +1,11 @@
+max_width = 140
+condense_wildcard_suffixes = true
+control_brace_style = "AlwaysSameLine"
+where_single_line = true
+newline_style = "Unix"
+reorder_imported_names = true
+reorder_imports = true
+reorder_imports_in_group = true
+tab_spaces = 2
+trailing_semicolon = false
+trailing_comma = "never"
