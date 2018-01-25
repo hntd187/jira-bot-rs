@@ -51,6 +51,6 @@ fn main() {
   let token = cfg.get_str("slack_key").expect("No Slack Key in config.yml");
   let jira = Jira::new(&cfg, users_file);
 
-  let mut handler = SlackHandler::new(&token, jira);
+  let mut handler = SlackHandler::new(jira);
   check!(RtmClient::login_and_run(&token, &mut handler));
 }

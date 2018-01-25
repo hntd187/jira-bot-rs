@@ -24,12 +24,9 @@ pub fn http_request(url: &str, params: &Params, auth: &Auth) -> Result<JsonValue
     password: Some(auth.1.to_owned())
   });
   let base_url = check!(Url::parse_with_params(url, params));
+  heads.set(auth_header);
 
   info!("Request sent to {}", base_url);
-
-  heads.set(auth_header);
-  info!("{}", heads);
-
   let request = match CLIENT.get(base_url).headers(heads).send() {
     Ok(r) => Ok(r),
     Err(_) => Err(ReportError(ReportErrorReason::FailedJiraRequest))

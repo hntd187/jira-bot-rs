@@ -115,15 +115,25 @@ impl Jira {
     entries
   }
 
+
+  // The way this method determines what is in progress is very hacky. Probably because JIRA returns
+  // status codes as strings instead of integers. Have to find a better way to write this.
   fn issue_breakdown(&self, name: &str, issues: &JsonValue) -> String {
     let mut result = String::new();
     let base = self.cfg.get_str("jira_base").expect("No base URL in Config");
     let base_url = Url::parse(&base).expect("Can't parse base URL in Config");
     let url = base_url.host_str().expect("No host string available for base URL");
-    result += &format!("{} ({})\n", name, issues.len());
+    result += &format!("*{}* ({})\n", name, issues.len());
     if issues.len() >= 1 {
       for i in issues.members() {
-        result += &format!("`{}` ({}) - http://{}/browse/{}\n", i["key"], i["assigneeName"], url, i["key"])
+        let mut in_progress = "";
+        let status = i["statusId"].as_str();
+        if let Some(s) = status {
+          if s == "1" || s == "10000" {
+            in_progress = "(In Progress)"
+          }
+        }
+        result += &format!("`{}` ({}) - http://{}/browse/{} {}\n", i["key"], i["assigneeName"], url, i["key"], in_progress)
       }
     } else {
       result += &format!("Nothing in {} :(\n", name);
@@ -185,13 +195,13 @@ impl Jira {
     let incompleted_issues = &report["contents"]["incompletedIssues"];
 
     result += "Report for Sprint: ";
-    result += &format!("{}\n", &report["sprint"]["name"]);
-    result += &format!("Sprint Start on: {}\n", &pretty_date(start));
+    result += &format!("*{}*\n", &report["sprint"]["name"]);
+    result += &format!("Sprint Started on: {}\n", &pretty_date(start));
     result += &format!("Sprint Ends in: {} day(s) on {}\n", time_to_end.num_days(), &pretty_date(end));
     result += &format!("Completed: {}h ({:.1}%), {} Issues\n", compl.num_hours(), comp_hours, completed_issues.len());
     result += &format!("Incomplete: {}h ({:.1}%), {} Issues\n\n", incompl.num_hours(), incomp_hours, incompleted_issues.len());
 
-    result += "Sprint Sizing:\n";
+    result += "*Sprint Sizing:*\n";
     for u in &self.users {
       let user = u["name"].to_owned().into_string().unwrap();
       let issues = Jira::issue_by_user(completed_issues, &user);
@@ -203,7 +213,7 @@ impl Jira {
         let total_hours = (Jira::sum_of_issues(&issues, "estimateStatistic") + total_incomp) as f64;
         let total_pct = (total_inlogged as f64 / total_hours) * 100.0;
         result +=
-          &format!("{} has {} hours left on {} ({:.1}%) hours for {} issues\n", user, total_inlogged, total_hours, total_pct, num_issues);
+          &format!("*{}* has {} hours left on {} ({:.1}%) hours for {} issues\n", user, total_inlogged, total_hours, total_pct, num_issues);
       }
     }
     result += "\n";

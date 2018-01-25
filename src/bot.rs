@@ -1,19 +1,15 @@
 use slack::{Error, Event, EventHandler, Message, RtmClient};
-use slack::api::auth::test;
-use slack::api::requests::default_client;
 
 use jira::Jira;
 
 pub struct SlackHandler {
-  token: String,
   my_id: String,
   jira: Jira
 }
 
 impl SlackHandler {
-  pub fn new(token: &str, jira: Jira) -> SlackHandler {
+  pub fn new(jira: Jira) -> SlackHandler {
     SlackHandler {
-      token: token.to_string(),
       my_id: String::new(),
       jira
     }
@@ -32,7 +28,7 @@ impl SlackHandler {
         _ => {
           response = format!("I'm not sure what you mean by {}", cmd);
         }
-      };
+      }
       cli.sender().send_message(channel, &response)?;
     }
     Ok(())
@@ -53,9 +49,11 @@ impl EventHandler for SlackHandler {
 
   #[allow(unused_variables)]
   fn on_connect(&mut self, cli: &RtmClient) {
-    info!("on_connect");
-    let response = check!(test(&default_client().unwrap(), &self.token));
-    self.my_id = check_opt!(response.user_id);
-    info!("My UserId is: {}", self.my_id);
+    let me = cli.start_response().clone().slf.unwrap();
+    self.my_id = check_opt!(me.id);
+    if let Some(n) = me.name {
+      info!("Connected as {:?}", n);
+    }
+    info!("My User ID is: {}", self.my_id);
   }
 }
