@@ -198,12 +198,12 @@ impl Jira {
       let incomplete_issues = Jira::issue_by_user(incompleted_issues, &user);
       let num_issues = issues.len() + incomplete_issues.len();
       if num_issues > 0 {
-        let total_comp = Jira::sum_of_issues(&issues, "estimateStatistic");
         let total_incomp = Jira::sum_of_issues(&incomplete_issues, "estimateStatistic");
-        let total_hours = (total_comp + total_incomp) as f64;
-        let total_pct = (total_comp as f64 / total_hours) * 100.0;
+        let total_inlogged = Jira::sum_of_issues(&incomplete_issues, "trackingStatistic");
+        let total_hours = (Jira::sum_of_issues(&issues, "estimateStatistic") + total_incomp) as f64;
+        let total_pct = (total_inlogged as f64 / total_hours) * 100.0;
         result +=
-          &format!("{} has {} hours left on {} ({:.1}%) hours for {} issues\n", user, total_incomp, total_hours, total_pct, num_issues);
+          &format!("{} has {} hours left on {} ({:.1}%) hours for {} issues\n", user, total_inlogged, total_hours, total_pct, num_issues);
       }
     }
     result += "\n";
