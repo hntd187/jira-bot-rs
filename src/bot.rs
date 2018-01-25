@@ -33,10 +33,7 @@ impl SlackHandler {
           response = format!("I'm not sure what you mean by {}", cmd);
         }
       };
-      return match cli.sender().send_message(channel, &response) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e)
-      }
+      cli.sender().send_message(channel, &response)?;
     }
     Ok(())
   }
@@ -46,13 +43,15 @@ impl EventHandler for SlackHandler {
   fn on_event(&mut self, cli: &RtmClient, event: Event) {
     if let Event::Message(box Message::Standard(m)) = event {
       if let Some(text) = m.text {
-        if let Ok(_) = self.process_message(&text, &m.channel.unwrap(), cli) {}
+        check!(self.process_message(&text, &m.channel.unwrap(), cli))
       }
     }
   }
 
+  #[allow(unused_variables)]
   fn on_close(&mut self, cli: &RtmClient) {}
 
+  #[allow(unused_variables)]
   fn on_connect(&mut self, cli: &RtmClient) {
     info!("on_connect");
     let response = check!(test(&default_client().unwrap(), &self.token));

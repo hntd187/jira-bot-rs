@@ -9,3 +9,4 @@ reorder_imports_in_group = true
 tab_spaces = 2
 trailing_semicolon = false
 trailing_comma = "never"
+use_small_heuristics = false

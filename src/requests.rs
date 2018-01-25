@@ -4,10 +4,9 @@ extern crate botlib;
 extern crate clap;
 extern crate config;
 
+use clap::*;
 use config::Config;
 use config::File;
-
-use clap::*;
 
 use botlib::jira::Jira;
 
@@ -19,41 +18,12 @@ fn main() {
     .subcommand(
       SubCommand::with_name("report")
         .about("Generates a sprint text report")
-        .arg(
-          Arg::with_name("verbose")
-            .short("v")
-            .long("verbose")
-            .help("Include detailed issue breakdown.")
-        )
+        .arg(Arg::with_name("verbose").short("v").long("verbose").help("Include detailed issue breakdown."))
     )
-    .arg(
-      Arg::with_name("sprint_id")
-        .short("s")
-        .long("sprint_id")
-        .required(true)
-        .value_name("SPRINT ID")
-        .takes_value(true)
-    )
-    .arg(
-      Arg::with_name("rapid_id")
-        .short("r")
-        .long("rapid_id")
-        .required(true)
-        .value_name("RAPID ID")
-        .takes_value(true)
-    )
-    .arg(
-      Arg::with_name("config")
-        .long("cfg")
-        .short("c")
-        .default_value("conf/config.yml")
-    )
-    .arg(
-      Arg::with_name("users")
-        .long("users")
-        .short("u")
-        .default_value("conf/users.yml")
-    );
+    .arg(Arg::with_name("sprint_id").short("s").long("sprint_id").required(true).value_name("SPRINT ID").takes_value(true))
+    .arg(Arg::with_name("rapid_id").short("r").long("rapid_id").required(true).value_name("RAPID ID").takes_value(true))
+    .arg(Arg::with_name("config").long("cfg").short("c").default_value("conf/config.yml"))
+    .arg(Arg::with_name("users").long("users").short("u").default_value("conf/users.yml"));
 
   let matches = args.get_matches();
 
