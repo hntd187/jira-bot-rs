@@ -1,0 +1,5 @@
+users:
+  - name : stephen.carman
+    slack: steve-carman-says
+  - name : bob.smith
+    slack: cool-guy-bob
