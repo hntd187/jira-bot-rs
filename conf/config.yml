@@ -1,4 +1,5 @@
-session_id:
 jira_base:
-xsrf_token:
 slack_key:
+jira_username:
+jira_password:
+in_progress:
