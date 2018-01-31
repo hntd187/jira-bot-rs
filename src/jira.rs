@@ -6,6 +6,7 @@ use std::io::Read;
 use chrono::Duration;
 use chrono::prelude::*;
 use config::Config;
+use config::ConfigError;
 use json::JsonValue;
 use reqwest::Url;
 use yaml_rust::{Yaml, YamlLoader};
@@ -46,6 +47,7 @@ impl fmt::Display for ReportError {
   }
 }
 
+#[inline]
 fn ordinal(date: NaiveDateTime) -> Result<String, ReportError> {
   let day = date.day();
   let mut result = if day >= 10 {
@@ -70,6 +72,7 @@ fn ordinal(date: NaiveDateTime) -> Result<String, ReportError> {
   Ok(result)
 }
 
+#[inline]
 fn pretty_date(date: NaiveDateTime) -> String {
   let mut result = String::new();
   let day = check!(ordinal(date));
@@ -94,6 +97,7 @@ impl Jira {
     }
   }
 
+  #[inline]
   fn get_issues(sprint: &JsonValue) -> Result<(Duration, Duration, Duration), ReportError> {
     let completed = sprint["completedIssuesEstimateSum"]["value"].as_fixed_point_i64(0).map(Duration::seconds);
     let incomplete = sprint["incompletedIssuesEstimateSum"]["value"].as_fixed_point_i64(0).map(Duration::seconds);
@@ -105,6 +109,7 @@ impl Jira {
     }
   }
 
+  #[inline]
   fn issue_by_user<'a>(d: &'a JsonValue, u: &str) -> Vec<&'a JsonValue> {
     let mut entries: Vec<&'a JsonValue> = Vec::new();
     for j in d.members() {
@@ -115,32 +120,23 @@ impl Jira {
     entries
   }
 
-
-  // The way this method determines what is in progress is very hacky. Probably because JIRA returns
-  // status codes as strings instead of integers. Have to find a better way to write this.
-  fn issue_breakdown(&self, name: &str, issues: &JsonValue) -> String {
-    let mut result = String::new();
-    let base = self.cfg.get_str("jira_base").expect("No base URL in Config");
-    let base_url = Url::parse(&base).expect("Can't parse base URL in Config");
-    let url = base_url.host_str().expect("No host string available for base URL");
-    result += &format!("*{}* ({})\n", name, issues.len());
-    if issues.len() >= 1 {
-      for i in issues.members() {
-        let mut in_progress = "";
-        let status = i["statusId"].as_str();
-        if let Some(s) = status {
-          if s == "1" || s == "10000" {
-            in_progress = "(In Progress)"
-          }
-        }
-        result += &format!("`{}` ({}) - http://{}/browse/{} {}\n", i["key"], i["assigneeName"], url, i["key"], in_progress)
-      }
-    } else {
-      result += &format!("Nothing in {} :(\n", name);
-    }
-    result
+  #[inline]
+  fn get_in_progress(&self) -> Result<Vec<i64>, ConfigError> {
+    self.cfg.get_array("in_progress").map(|v| v.into_iter().map(|i| check!(i.into_int())).collect())
   }
 
+  #[inline]
+  fn in_progress(json: &JsonValue, codes: &[i64]) -> String {
+    let status = json["statusId"].as_str().and_then(|s| s.parse::<i64>().ok());
+    if let Some(s) = status {
+      if codes.contains(&s) {
+        return String::from(" (In Progress)")
+      }
+    }
+    String::new()
+  }
+
+  #[inline]
   fn sum_of_issues(d: &[&JsonValue], key: &str) -> i64 {
     let mut total = 0;
     for i in d {
@@ -153,6 +149,7 @@ impl Jira {
     Duration::seconds(total).num_hours()
   }
 
+  #[inline]
   fn get_start_end_dates(sprint: &JsonValue) -> Result<(NaiveDateTime, NaiveDateTime), ReportError> {
     let raw_start = sprint["startDate"].to_string();
     let raw_end = sprint["endDate"].to_string();
@@ -162,6 +159,30 @@ impl Jira {
       (Ok(s), Ok(e)) => Ok((s, e)),
       _ => Err(ReportError(ReportErrorReason::BadDate))
     }
+  }
+
+  #[inline]
+  fn issue_breakdown(&self, name: &str, issues: &JsonValue) -> String {
+    let mut result = String::new();
+
+    let jira_base = self.cfg.get_str("jira_base").expect("No base URL in Config");
+    let in_progress_codes = self.get_in_progress().unwrap_or_default();
+    let base_url = Url::parse(&jira_base).expect("Can't parse base URL in Config");
+    let url = base_url.host_str().expect("No host string available for base URL");
+
+    result += &format!("*{}* ({})\n", name, issues.len());
+    if issues.len() >= 1 {
+      for i in issues.members() {
+        result += &format!("`{}` ({}) - http://{}/browse/{}", i["key"], i["assigneeName"], url, i["key"]);
+        if !in_progress_codes.is_empty() {
+          result += &Jira::in_progress(i, &in_progress_codes);
+        }
+        result += "\n";
+      }
+    } else {
+      result += &format!("Nothing in {} :(\n", name);
+    }
+    result
   }
 
   fn jira_request(&self, rapid_id: &str, sprint_id: &str) -> JsonValue {
@@ -216,10 +237,8 @@ impl Jira {
           &format!("*{}* has {} hours left on {} ({:.1}%) hours for {} issues\n", user, total_inlogged, total_hours, total_pct, num_issues);
       }
     }
-    result += "\n";
-    result += &self.issue_breakdown("Completed", completed_issues);
-    result += "\n";
-    result += &self.issue_breakdown("Incomplete", incompleted_issues);
+    result += &format!("{}\n", &self.issue_breakdown("Completed", completed_issues));
+    result += &format!("{}\n", &self.issue_breakdown("Incomplete", incompleted_issues));
 
     result
   }
