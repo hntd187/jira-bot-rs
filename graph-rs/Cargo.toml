@@ -1,0 +1,13 @@
+[package]
+name = "graph-rs"
+version = "0.1.0"
+authors = ["Stephen Carman <shcarman@gmail.com>"]
+
+[[bin]]
+name = "graph"
+path = "src/main.rs"
+
+[dependencies]
+find_folder = "*"
+conrod = {version = "0.57", features = ["winit", "glium"] }
+image = "*"
